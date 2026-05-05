@@ -11,7 +11,12 @@ set(SRC_INCLUDES
         )
 include_directories(${SRC_INCLUDES})
 
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR} *.cpp)
+set(SRC_FILES
+        ${PROJECT_SOURCE_DIR}/DemoAIModule.cpp
+        ${PROJECT_SOURCE_DIR}/Dll.cpp
+        ${PROJECT_SOURCE_DIR}/Instrumentation/CherryVis.cpp
+        ${PROJECT_SOURCE_DIR}/Instrumentation/Log.cpp
+)
 
 add_library(DemoAIModule SHARED ${SRC_FILES})
 

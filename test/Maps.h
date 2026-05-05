@@ -2,6 +2,9 @@
 
 #include <vector>
 #include <string>
+#include <functional>
+#include <memory>
+#include <algorithm>
 
 struct BWTest;
 

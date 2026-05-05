@@ -41,7 +41,13 @@ bool BuildingPlacer::isInResourceBox(int x, int y) const
 
 void BuildingPlacer::computeResourceBox()
 {
-    BWAPI::Position start(InformationManager::Instance().getMyMainBaseLocation()->getPosition());
+    BWTA::BaseLocation * mainBase = InformationManager::Instance().getMainBaseLocation(BWAPI::Broodwar->self());
+    if (!mainBase)
+    {
+        return;
+    }
+
+    BWAPI::Position start(mainBase->getPosition());
     BWAPI::Unitset unitsAroundNexus;
 
     for (const auto unit : BWAPI::Broodwar->getAllUnits())
@@ -75,6 +81,18 @@ void BuildingPlacer::computeResourceBox()
 // makes final checks to see if a building can be built at a certain location
 bool BuildingPlacer::canBuildHere(BWAPI::TilePosition position,const Building & b) const
 {
+    if (!position.isValid())
+    {
+        return false;
+    }
+
+    const int rwidth = _reserveMap.size();
+    const int rheight = _reserveMap[0].size();
+    if (position.x < 0 || position.y < 0 || position.x + b.type.tileWidth() > rwidth || position.y + b.type.tileHeight() > rheight)
+    {
+        return false;
+    }
+
     if (!BWAPI::Broodwar->canBuildHere(position,b.type,b.builderUnit))
     {
         return false;

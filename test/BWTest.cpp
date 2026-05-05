@@ -240,9 +240,16 @@ void BWTest::run()
     int tries = 0;
     while (true)
     {
-        if (waitpid(opponentPid, nullptr, WNOHANG) != -1)
+        int status = 0;
+        pid_t result = waitpid(opponentPid, &status, WNOHANG);
+        if (result == opponentPid)
         {
             std::cout << "Opponent process exited" << std::endl;
+            break;
+        }
+        if (result == -1)
+        {
+            std::cerr << "Failed waiting for opponent process" << std::endl;
             break;
         }
 
