@@ -13,10 +13,12 @@
 #include <filesystem>
 
 #include "GameCommander.h"
+#include <cstdlib>
 #include <iostream>
 #include "Logger.h"
 #include "MapTools.h"
 #include "Config.h"
+#include "Random.h"
 
 #include "rapidjson/document.h"
 
@@ -25,6 +27,8 @@ using namespace Locutus;
 
 namespace { auto & bwemMap = BWEM::Map::Instance(); }
 namespace { auto & bwebMap = BWEB::Map::Instance(); }
+namespace { bool hasForcedRandomSeed = false; }
+namespace { unsigned int forcedRandomSeed = 0; }
 
 bool gameEnded;
 
@@ -32,6 +36,12 @@ bool gameEnded;
 void LocutusBotModule::onStart()
 {
     gameEnded = false;
+
+    if (hasForcedRandomSeed)
+    {
+        std::srand(forcedRandomSeed);
+        Random::Instance().setSeed(forcedRandomSeed);
+    }
 
     // Uncomment this when we need to debug log stuff before the config file is parsed
     //Config::Debug::LogDebug = true;
@@ -103,6 +113,12 @@ void LocutusBotModule::onStart()
 void LocutusBotModule::setStrategy(std::string strategy)
 {
     Config::StardustTestStrategyName = strategy;
+}
+
+void LocutusBotModule::setRandomSeed(unsigned int seed)
+{
+    forcedRandomSeed = seed;
+    hasForcedRandomSeed = true;
 }
 
 void LocutusBotModule::forceGasSteal()

@@ -15,6 +15,7 @@ public:
 
 	int index(int n);
 	bool flag(double probability);
+	void setSeed(unsigned int seed);
 
 	static Random & Instance();
 };

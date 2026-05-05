@@ -22,6 +22,7 @@ public:
 	void	onUnitRenegade(BWAPI::Unit unit);
 
 	static void setStrategy(std::string strategy);
+	static void setRandomSeed(unsigned int seed);
 	static void forceGasSteal();
 	static std::string getStrategyName();
 };

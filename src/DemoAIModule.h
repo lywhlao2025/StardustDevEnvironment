@@ -64,4 +64,5 @@ public:
   int focusTargetId = -1;
   int focusTargetFrame = 0;
   int retreatUntilFrame = 0;
+  bool committedAttack = false;
 };

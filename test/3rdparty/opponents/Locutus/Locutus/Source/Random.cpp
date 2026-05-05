@@ -27,6 +27,11 @@ bool Random::flag(double probability)
 	return uniform_dist(_rng) < probability;
 }
 
+void Random::setSeed(unsigned int seed)
+{
+	_rng.seed(seed);
+}
+
 Random & Random::Instance()
 {
 	static Random instance;

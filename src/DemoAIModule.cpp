@@ -337,6 +337,23 @@ namespace
         return false;
     }
 
+    bool isMeleeThreatOnWorkers(Unit enemy)
+    {
+        if (!enemy || !enemy->exists() || !Broodwar->self()) return false;
+        if (enemy->isFlying()) return false;
+        if (!enemy->getType().canAttack()) return false;
+        if (enemy->getType().groundWeapon() == WeaponTypes::None) return false;
+        if (enemy->getType().groundWeapon().maxRange() > 40) return false;
+
+        for (auto &u : Broodwar->self()->getUnits())
+        {
+            if (!u->exists()) continue;
+            if (u->getType() != UnitTypes::Protoss_Probe) continue;
+            if (enemy->getDistance(u) <= 128) return true;
+        }
+        return false;
+    }
+
     // 为单个作战单位选择目标：优先高价值/低血/就近。
     Unit pickCombatTarget(Unit unit)
     {
@@ -348,6 +365,9 @@ namespace
             if (!enemy->isVisible()) continue;
             double dist = unit->getDistance(enemy);
             bool threat = enemy->getType().canAttack();
+            bool transport = enemy->getType() == UnitTypes::Protoss_Shuttle ||
+                             enemy->getType() == UnitTypes::Terran_Dropship;
+            bool meleeThreatOnWorkers = isMeleeThreatOnWorkers(enemy);
             double value = 1.0;
             if (enemy->getType().isWorker()) value = 0.8;
             if (enemy->getType().isBuilding()) value = 0.6;
@@ -355,6 +375,8 @@ namespace
             if (enemy->getType() == UnitTypes::Protoss_Zealot) value = 1.4;
             if (enemy->getType() == UnitTypes::Protoss_High_Templar) value = 2.2;
             if (enemy->getType() == UnitTypes::Protoss_Dark_Templar) value = 2.4;
+            if (transport) value = 3.2;
+            if (meleeThreatOnWorkers) value = std::max(value, 5.5);
 
             double hpRatio = 1.0;
             double maxHp = enemy->getType().maxHitPoints() + enemy->getType().maxShields();
@@ -363,7 +385,8 @@ namespace
                 hpRatio = (enemy->getHitPoints() + enemy->getShields()) / maxHp;
             }
             double lowHpBonus = (hpRatio < 0.35) ? -64.0 : 0.0;
-            double threatPenalty = threat ? 0.0 : 48.0;
+            double threatPenalty = transport ? -96.0 : (threat ? 0.0 : 48.0);
+            if (meleeThreatOnWorkers) threatPenalty -= 96.0;
 
             double score = dist + threatPenalty - (value * 40.0) + lowHpBonus;
             if (score < bestScore)
@@ -387,6 +410,9 @@ namespace
             double dist = enemy->getDistance(center);
             if (dist > radius) continue;
 
+            bool transport = enemy->getType() == UnitTypes::Protoss_Shuttle ||
+                             enemy->getType() == UnitTypes::Terran_Dropship;
+            bool meleeThreatOnWorkers = isMeleeThreatOnWorkers(enemy);
             double value = 1.0;
             if (enemy->getType().isWorker()) value = 0.7;
             if (enemy->getType().isBuilding()) value = 0.5;
@@ -394,11 +420,14 @@ namespace
             if (enemy->getType() == UnitTypes::Protoss_Zealot) value = 1.5;
             if (enemy->getType() == UnitTypes::Protoss_High_Templar) value = 2.6;
             if (enemy->getType() == UnitTypes::Protoss_Dark_Templar) value = 2.8;
+            if (transport) value = 3.4;
+            if (meleeThreatOnWorkers) value = std::max(value, 5.8);
 
             double maxHp = enemy->getType().maxHitPoints() + enemy->getType().maxShields();
             double hpRatio = (maxHp > 0) ? (enemy->getHitPoints() + enemy->getShields()) / maxHp : 1.0;
             double lowHpBonus = (hpRatio < 0.4) ? -96.0 : 0.0;
-            double threatBonus = enemy->getType().canAttack() ? -32.0 : 12.0;
+            double threatBonus = transport ? -120.0 : (enemy->getType().canAttack() ? -32.0 : 12.0);
+            if (meleeThreatOnWorkers) threatBonus -= 128.0;
 
             double score = dist - (value * 55.0) + lowHpBonus + threatBonus;
             if (score < bestScore)
@@ -471,8 +500,8 @@ namespace
         }
     }
 
-    // 维持采气人数：按每个 Assimilator 目标 3 工人补齐采气。
-    void manageGas(Unit scout)
+    // 维持采气人数。PvP 早期可主动降气，把工人拉回矿线，避免矿不够出 Core/Dragoon/防守建筑。
+    void manageGas(Unit scout, int desiredGasWorkers)
     {
         int assimilators = 0;
         for (auto &u : Broodwar->self()->getUnits())
@@ -483,17 +512,43 @@ namespace
         if (assimilators == 0) return;
 
         int gasWorkers = 0;
+        std::vector<Unit> assignedGasWorkers;
         for (auto &u : Broodwar->self()->getUnits())
         {
             if (!u->exists()) continue;
             if (!u->getType().isWorker()) continue;
-            if (u->getOrder() == Orders::HarvestGas || u->getOrder() == Orders::ReturnGas || u->isCarryingGas())
+            if (u->isGatheringGas() || u->isCarryingGas())
             {
                 gasWorkers++;
+                assignedGasWorkers.push_back(u);
             }
         }
 
-        int desiredGasWorkers = 3 * assimilators;
+        desiredGasWorkers = std::max(0, std::min(desiredGasWorkers, 3 * assimilators));
+        if (gasWorkers > desiredGasWorkers)
+        {
+            for (auto &u : assignedGasWorkers)
+            {
+                if (!u->exists()) continue;
+                if (u == scout) continue;
+                if (u->isConstructing()) continue;
+                if (u->isCarryingGas())
+                {
+                    u->returnCargo();
+                    gasWorkers--;
+                    if (gasWorkers <= desiredGasWorkers) break;
+                    continue;
+                }
+
+                Unit mineral = closestMineralTo(u);
+                if (mineral && u->gather(mineral))
+                {
+                    gasWorkers--;
+                    if (gasWorkers <= desiredGasWorkers) break;
+                }
+            }
+        }
+
         if (gasWorkers >= desiredGasWorkers) return;
 
         for (auto &u : Broodwar->self()->getUnits())
@@ -644,6 +699,7 @@ void DemoAIModule::onStart()
     focusTargetId = -1;
     focusTargetFrame = 0;
     retreatUntilFrame = 0;
+    committedAttack = false;
 }
 
 void DemoAIModule::onEnd(bool isWinner)
@@ -830,7 +886,6 @@ void DemoAIModule::onFrame()
 
     // Basic worker mining
     keepMining(scoutProbe);
-    manageGas(scoutProbe);
 
     // ===== 经济与建造阶段 =====
     // Build order + supply
@@ -840,11 +895,13 @@ void DemoAIModule::onFrame()
     int assimilators = countUnits(UnitTypes::Protoss_Assimilator);
     int forges = countUnits(UnitTypes::Protoss_Forge);
     int cannons = countUnits(UnitTypes::Protoss_Photon_Cannon);
+    int completedCannons = countUnits(UnitTypes::Protoss_Photon_Cannon, true);
     int robotics = countUnits(UnitTypes::Protoss_Robotics_Facility);
     int observatories = countUnits(UnitTypes::Protoss_Observatory);
     int observers = countUnits(UnitTypes::Protoss_Observer);
     int dragoons = countUnits(UnitTypes::Protoss_Dragoon);
     int zealots = countUnits(UnitTypes::Protoss_Zealot);
+    int completedCores = countUnits(UnitTypes::Protoss_Cybernetics_Core, true);
 
     int enemyZealots = countEnemy(UnitTypes::Protoss_Zealot);
     int enemyDragoons = countEnemy(UnitTypes::Protoss_Dragoon);
@@ -877,11 +934,14 @@ void DemoAIModule::onFrame()
     }
 
     // 敌情标签：用于后续分支决策（防守/进攻/科技）
+    bool enemyNearHome = enemyPresenceNearHome(startLocationCenter(myStart), 1200);
     bool enemyRush = (enemyZealots >= 3 && frame < 9000) ||
                      (enemyGateways >= 2 && frame < 7000) || (threatMask & Threat_Proxy);
-    bool enemyPressure = (enemyGateways >= 1 && Broodwar->getFrameCount() < 9000) || (threatMask & Threat_Proxy);
+    bool enemyPressure = enemyNearHome || enemyRush || (threatMask & Threat_Proxy);
     bool enemyGreed = (enemyNexus >= 2 && Broodwar->getFrameCount() < 9000);
     bool enemyProtoss = (Broodwar->enemy() && Broodwar->enemy()->getRace() == BWAPI::Races::Protoss);
+    bool earlyPvP = enemyProtoss && frame < 24 * 60 * 7;
+    bool roboticsDropThreat = enemyProtoss && enemyRobotics > 0 && frame < 24 * 60 * 9;
     if (enemyPressure && lastEnemyPressureFrame < frame) lastEnemyPressureFrame = frame;
 
     int supplyRemaining = (supplyTotal - supplyUsed);
@@ -912,12 +972,114 @@ void DemoAIModule::onFrame()
     if (!gatewayBuildNear) gatewayBuildNear = myStart;
     int nexusCount = countUnits(UnitTypes::Protoss_Nexus);
     int probeCount = countUnits(UnitTypes::Protoss_Probe);
+    int targetEarlyZealots = 0;
+    int targetOpeningDragoons = 0;
+    if (earlyPvP)
+    {
+        targetEarlyZealots = 4;
+        if (enemyRush || (threatMask & Threat_TechRush)) targetEarlyZealots = 6;
+        if (enemyNearHome || enemyDragoons > 0) targetEarlyZealots = 8;
+        if (enemyRobotics > 0) targetEarlyZealots = std::min(targetEarlyZealots, 4);
+
+        targetOpeningDragoons = ((threatMask & Threat_TechRush) || enemyRobotics > 0 || enemyDragoons > 0 || enemyNearHome) ? 4 : 2;
+    }
+    bool proactiveDropDefense = enemyProtoss &&
+                                completedCores > 0 &&
+                                (dragoons >= 3 || (dragoons >= 2 && frame >= 24 * 60 * 6));
+    bool pvpPreferRangedMidgame = enemyProtoss &&
+                                  completedCores > 0 &&
+                                  (proactiveDropDefense || enemyRobotics > 0 || enemyDragoons > 0 || dragoons < 6);
+    int basePvPDefensiveCannons = 0;
+    if (enemyProtoss)
+    {
+        if (gateways >= 2 && zealots >= 2) basePvPDefensiveCannons = 2;
+        if (completedCores > 0 && dragoons >= 2) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 1);
+        if (enemyNearHome || proactiveDropDefense) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 2);
+        if (enemyRobotics > 0 || roboticsDropThreat) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 3);
+        if (roboticsDropThreat && completedCores > 0 && dragoons >= 2)
+        {
+            basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 3);
+        }
+    }
+    bool pvpOneBaseDropDefense = enemyProtoss &&
+                                 nexusCount < 2 &&
+                                 frame < 24 * 60 * 10 &&
+                                 (roboticsDropThreat ||
+                                  proactiveDropDefense ||
+                                  enemyNearHome ||
+                                  completedCannons < std::max(2, basePvPDefensiveCannons));
+    int cannonReadyShortfall = std::max(0, basePvPDefensiveCannons - completedCannons);
+    int defensiveCannonMineralReserve = 100 * cannonReadyShortfall;
+    if (enemyNearHome && cannonReadyShortfall > 0)
+    {
+        defensiveCannonMineralReserve = 50 * cannonReadyShortfall;
+    }
+    bool reserveForFirstDragoons = earlyPvP &&
+                                   completedCores > 0 &&
+                                   dragoons < targetOpeningDragoons;
+    int desiredGasWorkers = 3 * countUnits(UnitTypes::Protoss_Assimilator, true);
+    if (earlyPvP && desiredGasWorkers > 0)
+    {
+        desiredGasWorkers = 2;
+        if (completedCores > 0 && dragoons < targetOpeningDragoons)
+        {
+            desiredGasWorkers = Broodwar->self()->gas() < 150 ? 3 : 1;
+        }
+        if (completedCores > 0 && (enemyRobotics > 0 || roboticsDropThreat) && dragoons < 6)
+        {
+            desiredGasWorkers = std::max(desiredGasWorkers, 2);
+        }
+        if (completedCores > 0 && dragoons >= 2 && Broodwar->self()->gas() > Broodwar->self()->minerals() + 150)
+        {
+            desiredGasWorkers = 1;
+        }
+    }
+    manageGas(scoutProbe, desiredGasWorkers);
 
     // Economy first: spend the first 50 minerals on a Probe before tech/army can consume it.
     // This is the main fix for the old 13-Probe stall against Easy/DoNothing.
     int probeQueued = 0;
     int desiredProbes = desiredProbeCount();
-    if (probeCount < desiredProbes && supplyRemaining >= 2)
+    if (earlyPvP)
+    {
+        int pvpProbeCap = 16;
+        if (gateways >= 2 && zealots >= 6) pvpProbeCap = 18;
+        if ((zealots + dragoons) >= 12) pvpProbeCap = 20;
+        desiredProbes = std::min(desiredProbes, pvpProbeCap);
+    }
+    if (pvpOneBaseDropDefense)
+    {
+        desiredProbes = std::min(desiredProbes, 18);
+    }
+
+    bool prioritizeEarlyArmy = earlyPvP && gateways >= 1 && zealots < targetEarlyZealots;
+    if (prioritizeEarlyArmy && supplyRemaining >= 4)
+    {
+        for (auto &u : Broodwar->self()->getUnits())
+        {
+            if (!u->exists()) continue;
+            if (u->getType() != UnitTypes::Protoss_Gateway) continue;
+            if (!u->isCompleted() || !u->isIdle()) continue;
+            if (!Broodwar->hasPower(u->getTilePosition())) continue;
+            if (Broodwar->self()->minerals() < 100 || supplyRemaining < 4) break;
+            if (u->train(UnitTypes::Protoss_Zealot))
+            {
+                zealots++;
+                supplyRemaining -= 4;
+                if (zealots >= targetEarlyZealots) break;
+            }
+        }
+    }
+
+    bool holdExtraProbes = prioritizeEarlyArmy && probeCount >= 16;
+    if (reserveForFirstDragoons && probeCount >= 16) holdExtraProbes = true;
+    if (earlyPvP && cores == 0 && countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 && Broodwar->self()->gas() >= 80 && probeCount >= 16)
+    {
+        holdExtraProbes = true;
+    }
+    if (pvpOneBaseDropDefense && probeCount >= 18) holdExtraProbes = true;
+    if (pvpOneBaseDropDefense && enemyNearHome && probeCount >= 12) holdExtraProbes = true;
+    if (!holdExtraProbes && probeCount < desiredProbes && supplyRemaining >= 2)
     {
         for (auto &u : Broodwar->self()->getUnits())
         {
@@ -965,7 +1127,11 @@ void DemoAIModule::onFrame()
     // Do this before gas/tech/building spends so minerals become fighting units.
     // Do not stop at a tiny army: the 16-Zealot cap allowed huge mineral banks
     // and frame-limit losses on Easy/DoNothing.
-    if (zealots < 48 && supplyRemaining >= 4 && Broodwar->self()->minerals() >= 100)
+    if (!reserveForFirstDragoons &&
+        !pvpPreferRangedMidgame &&
+        zealots < 48 &&
+        supplyRemaining >= 4 &&
+        Broodwar->self()->minerals() >= 100)
     {
         for (auto &u : Broodwar->self()->getUnits())
         {
@@ -1017,21 +1183,41 @@ void DemoAIModule::onFrame()
     // Economy-first gas: only take gas after we have 2 Gateways and at least
     // some fighting units OR if we are past the early macro phase.
     bool readyForGas = (gateways >= 2 && (zealots >= 2 || frame > 24 * 60 * 4)) || probeCount >= 24;
-    if (assimilators == 0 && readyForGas && supplyUsed >= 18 * 2 && (!proxyMode || proxyGateways >= 2))
+    if (earlyPvP)
+    {
+        int gasArmyGate = ((threatMask & Threat_TechRush) || enemyRobotics > 0 || enemyDragoons > 0) ? 6 : 8;
+        readyForGas = gateways >= 3 && probeCount >= 18 && zealots >= gasArmyGate;
+        if (gateways >= 2 && probeCount >= 15 && zealots >= 2)
+        {
+            readyForGas = true;
+        }
+    }
+    int gasSupplyGate = earlyPvP ? 14 * 2 : 18 * 2;
+    if (assimilators == 0 && readyForGas && supplyUsed >= gasSupplyGate && (!proxyMode || proxyGateways >= 2))
     {
         tryBuild(UnitTypes::Protoss_Assimilator, myStart);
     }
 
-    if (cores == 0 && assimilators >= 1 && pylons >= 2 && (!proxyMode || proxyGateways >= 2))
+    bool coreInProgress = Broodwar->self()->incompleteUnitCount(UnitTypes::Protoss_Cybernetics_Core) > 0;
+    bool readyForCore = cores == 0 &&
+                        !coreInProgress &&
+                        countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
+                        pylons >= 2 &&
+                        (!proxyMode || proxyGateways >= 2);
+    if (readyForCore &&
+        (!earlyPvP ||
+         (gateways >= 2 && zealots >= 2) ||
+         enemyDragoons > 0))
     {
         tryBuild(UnitTypes::Protoss_Cybernetics_Core, myStart);
     }
 
-    bool earlyAntiCloak = enemyProtoss && ((threatMask & (Threat_TechRush | Threat_Cloak)) || enemyCitadel > 0 || enemyTemplarArchives > 0 || (frame < 24 * 60 * 4 && enemyGateways >= 1));
+    bool earlyAntiCloak = enemyProtoss && ((threatMask & Threat_Cloak) || enemyCitadel > 0 || enemyTemplarArchives > 0);
 
     // Detection chain: after Core, prioritize Robotics -> Observatory.
     // Build earlier if cloak threat detected; otherwise wait until we have a modest army.
-    bool needRobotics = (enemyProtoss && (threatMask & (Threat_Cloak | Threat_TechRush | Threat_Air))) || dragoons >= 2;
+    bool needRobotics = (enemyProtoss && (threatMask & (Threat_Cloak | Threat_Air))) ||
+                        (!pvpOneBaseDropDefense && dragoons >= 6);
     if (cores > 0 && robotics == 0 && needRobotics && Broodwar->self()->minerals() >= 200 && Broodwar->self()->gas() >= 100)
     {
         tryBuild(UnitTypes::Protoss_Robotics_Facility, myStart);
@@ -1041,30 +1227,35 @@ void DemoAIModule::onFrame()
         tryBuild(UnitTypes::Protoss_Observatory, myStart);
     }
 
-    // Early PvP safety: only fast Forge/Cannons when threat is detected; otherwise delay to protect econ
+    // Early PvP safety: prepare static defense for drop timing, but avoid spending the mineral line dead.
     if (enemyProtoss)
     {
-        bool earlyThreat = enemyRush || (threatMask & (Threat_Proxy | Threat_TechRush | Threat_Cloak));
-        if (forges == 0 && pylons >= 1 && (earlyThreat || Broodwar->getFrameCount() > 3600))
+        bool dropDefenseReady = roboticsDropThreat && completedCores > 0 && dragoons >= 2;
+        bool earlyThreat = enemyNearHome || proactiveDropDefense || dropDefenseReady || (threatMask & (Threat_Proxy | Threat_Cloak));
+        bool pvpForgeTiming = gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4;
+        if (forges == 0 && pylons >= 1 && (earlyThreat || pvpForgeTiming))
         {
             tryBuild(UnitTypes::Protoss_Forge, myStart);
         }
-        int desiredCannons = earlyThreat ? 2 : 0;
+        int desiredCannons = basePvPDefensiveCannons;
         if (earlyAntiCloak) desiredCannons += 1;
         if (responseMask & Resp_Defend) desiredCannons += 1;
         if (threatMask & Threat_Cloak) desiredCannons += 1;
-        if (forges > 0 && desiredCannons > 0 && cannons < desiredCannons && Broodwar->self()->minerals() >= 150)
+        desiredCannons = std::min(desiredCannons, 3);
+        if (enemyNearHome && cannons > 0) desiredCannons = cannons;
+        if (forges > 0 && desiredCannons > 0 && cannons < desiredCannons)
         {
             tryBuild(UnitTypes::Protoss_Photon_Cannon, myStart);
         }
     }
 
-    if (enemyRush && gateways < 3 && pylons >= 2)
+    if (enemyRush && gateways < 3 && pylons >= 2 && (!earlyPvP || cores > 0 || coreInProgress))
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
     }
 
-    if (gateways < 3 && pylons >= 3 && supplyUsed >= 20 * 2 && Broodwar->self()->minerals() >= 300)
+    if (gateways < 3 && pylons >= 3 && supplyUsed >= 20 * 2 && Broodwar->self()->minerals() >= 300 &&
+        (!earlyPvP || cores > 0 || coreInProgress))
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
     }
@@ -1087,7 +1278,9 @@ void DemoAIModule::onFrame()
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
     }
 
-    if ((enemyRush || enemyPressure) && forges == 0 && pylons >= 1)
+    if ((enemyNearHome || proactiveDropDefense || roboticsDropThreat || (threatMask & Threat_Cloak) ||
+         (gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4)) &&
+        forges == 0 && pylons >= 1)
     {
         tryBuild(UnitTypes::Protoss_Forge, myStart);
     }
@@ -1105,7 +1298,10 @@ void DemoAIModule::onFrame()
         }
     }
 
-    if ((enemyRush || enemyPressure) && forges > 0 && cannons < 2 && Broodwar->self()->minerals() >= 150)
+    if ((enemyNearHome || proactiveDropDefense || roboticsDropThreat || (threatMask & Threat_Cloak)) &&
+        forges > 0 &&
+        cannons < std::max(2, basePvPDefensiveCannons) &&
+        Broodwar->self()->minerals() >= 150)
     {
         tryBuild(UnitTypes::Protoss_Photon_Cannon, myStart);
     }
@@ -1127,7 +1323,7 @@ void DemoAIModule::onFrame()
 
     // Worker production fallback in case a Nexus became idle after an earlier order failed.
     // desiredProbes/probeQueued are computed in the economy-first block above.
-    if (probeCount < desiredProbes && supplyRemaining >= 2)
+    if (!holdExtraProbes && probeCount < desiredProbes && supplyRemaining >= 2)
     {
         int availableSupply = supplyRemaining / 2;
         for (auto &u : Broodwar->self()->getUnits())
@@ -1173,11 +1369,40 @@ void DemoAIModule::onFrame()
         }
     }
 
+    if (reserveForFirstDragoons && supplyRemaining >= 4)
+    {
+        for (auto &u : Broodwar->self()->getUnits())
+        {
+            if (!u->exists()) continue;
+            if (u->getType() != UnitTypes::Protoss_Gateway) continue;
+            if (!u->isCompleted() || !u->isIdle()) continue;
+            if (!Broodwar->hasPower(u->getTilePosition())) continue;
+            if (Broodwar->self()->minerals() < 125 || Broodwar->self()->gas() < 50 || supplyRemaining < 4) break;
+            if (u->train(UnitTypes::Protoss_Dragoon))
+            {
+                dragoons++;
+                supplyRemaining -= 4;
+                if (dragoons >= targetOpeningDragoons) break;
+            }
+        }
+    }
+
     // 根据敌情与当前兵力配比在 Gateway 训练 Zealot / Dragoon。
     // 目标：前期抗压、中期转 Dragoon 形成持续火力。
     // Train units
     int availableArmySupply = (supplyRemaining / 2) - probeQueued;
     if (availableArmySupply < 0) availableArmySupply = 0;
+    bool reserveForCore = earlyPvP &&
+                          cores == 0 &&
+                          countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
+                          zealots >= 4 &&
+                          Broodwar->self()->gas() >= 100 &&
+                          gateways >= 2;
+    int mineralReserve = reserveForCore ? 200 : 0;
+    if (!(earlyPvP && cores > 0 && dragoons < targetOpeningDragoons))
+    {
+        mineralReserve = std::max(mineralReserve, defensiveCannonMineralReserve);
+    }
     for (auto &u : Broodwar->self()->getUnits())
     {
         if (!u->exists()) continue;
@@ -1204,21 +1429,35 @@ void DemoAIModule::onFrame()
         }
 
         bool wantGoon = (cores > 0 && Broodwar->self()->gas() >= 50);
+        if (earlyPvP && zealots < targetEarlyZealots)
+        {
+            wantGoon = false;
+        }
+        bool roboticsDragoonPriority = enemyProtoss &&
+                                       cores > 0 &&
+                                       (roboticsDropThreat || enemyRobotics > 0) &&
+                                       dragoons < 6;
+        if (reserveForFirstDragoons || roboticsDragoonPriority)
+        {
+            wantGoon = true;
+        }
         if (wantGoon && dragoons < (zealots * 2 + 2))
         {
-            if (Broodwar->self()->minerals() >= 125)
+            if (Broodwar->self()->minerals() >= 125 + mineralReserve)
             {
                 if (u->train(UnitTypes::Protoss_Dragoon))
                 {
                     availableArmySupply--;
+                    dragoons++;
                 }
             }
         }
-        else if (Broodwar->self()->minerals() >= 100)
+        else if (!reserveForFirstDragoons && !roboticsDragoonPriority && Broodwar->self()->minerals() >= 100 + mineralReserve)
         {
             if (u->train(UnitTypes::Protoss_Zealot))
             {
                 availableArmySupply--;
+                zealots++;
             }
         }
     }
@@ -1231,7 +1470,28 @@ void DemoAIModule::onFrame()
     else if (enemyGreed) minAttackThreshold = 6;
     else if (enemyRush) minAttackThreshold = 16;
     else if (enemyPressure) minAttackThreshold = 10;
+    if (earlyPvP && ((threatMask & Threat_TechRush) || enemyDragoons > 0))
+    {
+        minAttackThreshold = std::max(minAttackThreshold, 14);
+    }
     bool canProactiveAttack = (armyCount >= minAttackThreshold);
+    bool recentHomePressure = lastEnemyPressureFrame >= 0 &&
+                              (frame - lastEnemyPressureFrame) <= 24 * 20;
+    int defensiveCannonsReadyTarget = std::max(2, basePvPDefensiveCannons);
+    bool enemyInBaseNow = enemyPresenceNearHome(startLocationCenter(myStart), 600);
+    bool dropDefenseHoldHome = enemyProtoss &&
+                               frame < 24 * 60 * 10 &&
+                               (proactiveDropDefense || roboticsDropThreat || forges > 0) &&
+                               (enemyNearHome ||
+                                enemyInBaseNow ||
+                                recentHomePressure ||
+                                completedCannons < defensiveCannonsReadyTarget ||
+                                (roboticsDropThreat && dragoons < 6));
+    if (enemyProtoss && enemyInBaseNow)
+    {
+        dropDefenseHoldHome = true;
+        canProactiveAttack = false;
+    }
 
     Position attackTarget = enemyStart ? startLocationCenter(enemyStart) : startLocationCenter(myStart);
     if (lastEnemyBuildingTile)
@@ -1270,7 +1530,7 @@ void DemoAIModule::onFrame()
     bool counterReady = counterWindow && (armyCount >= 12) && (observers >= 1) && (enemyPower <= 0.1 || friendlyPower > enemyPower * 1.6);
 
     // Hysteresis: once we commit to attack, don't retreat unless army wiped
-    static bool committedAttack = false;
+    if (dropDefenseHoldHome) committedAttack = false;
     if (canProactiveAttack) committedAttack = true;
     if (armyCount <= 2) committedAttack = false;
     bool shouldAttack = canProactiveAttack || counterReady || committedAttack;
@@ -1290,7 +1550,8 @@ void DemoAIModule::onFrame()
     (void)rallyCount;
 
     // Focus target refresh (集火)
-    if (enemyNear || shouldAttack)
+    bool homeDefenseActive = dropDefenseHoldHome || recentHomePressure;
+    if (enemyNear || shouldAttack || homeDefenseActive)
     {
         Unit focus = (focusTargetId >= 0) ? Broodwar->getUnit(focusTargetId) : nullptr;
         if (!focus || !focus->exists() || (frame - focusTargetFrame) > 18 || focus->getDistance(shouldAttack ? attackTarget : defendTarget) > 900)
@@ -1299,6 +1560,73 @@ void DemoAIModule::onFrame()
             focus = pickFocusTarget(focusCenter, 900);
             focusTargetId = focus ? focus->getID() : -1;
             focusTargetFrame = frame;
+        }
+    }
+
+    if (homeDefenseActive || enemyNearHome)
+    {
+        for (auto &u : Broodwar->self()->getUnits())
+        {
+            if (!u->exists()) continue;
+            if (u->getType() != UnitTypes::Protoss_Probe) continue;
+            if (u == scoutProbe) continue;
+            if (u->isConstructing()) continue;
+
+            double nearestThreatDist = 1000000.0;
+            double nearestMeleeThreatDist = 1000000.0;
+            Position nearestThreatPos = Position(0, 0);
+            for (auto &enemy : Broodwar->enemy()->getUnits())
+            {
+                if (!enemy->exists()) continue;
+                if (enemy->getType().isWorker()) continue;
+                if (!enemy->getType().canAttack()) continue;
+                double dist = enemy->getDistance(u);
+                if (dist < nearestThreatDist)
+                {
+                    nearestThreatDist = dist;
+                    nearestThreatPos = enemy->getPosition();
+                }
+                if (!enemy->isFlying() &&
+                    enemy->getType().groundWeapon() != WeaponTypes::None &&
+                    enemy->getType().groundWeapon().maxRange() <= 40)
+                {
+                    nearestMeleeThreatDist = std::min(nearestMeleeThreatDist, dist);
+                }
+            }
+
+            bool urgentThreat = nearestThreatDist <= 240.0 || nearestMeleeThreatDist <= 320.0;
+            if (!urgentThreat) continue;
+
+            if (nearestMeleeThreatDist <= 192.0)
+            {
+                Position fleeDir = u->getPosition() - nearestThreatPos;
+                double fleeLen = std::sqrt(fleeDir.x * fleeDir.x + fleeDir.y * fleeDir.y);
+                if (fleeLen < 1.0)
+                {
+                    fleeDir = Position(u->getID() % 3 - 1, u->getID() % 5 - 2);
+                    fleeLen = std::sqrt(fleeDir.x * fleeDir.x + fleeDir.y * fleeDir.y);
+                }
+                if (fleeLen > 0)
+                {
+                    Position fleeTarget = u->getPosition() + Position(
+                        static_cast<int>(fleeDir.x * 192.0 / fleeLen),
+                        static_cast<int>(fleeDir.y * 192.0 / fleeLen));
+                    fleeTarget.x = std::max(0, std::min(fleeTarget.x, Broodwar->mapWidth() * 32 - 1));
+                    fleeTarget.y = std::max(0, std::min(fleeTarget.y, Broodwar->mapHeight() * 32 - 1));
+                    u->move(fleeTarget);
+                    continue;
+                }
+            }
+
+            Unit mineral = closestMineralTo(u);
+            if (mineral)
+            {
+                u->gather(mineral);
+            }
+            else if (u->getDistance(defendTarget) > 64)
+            {
+                u->move(defendTarget);
+            }
         }
     }
 
@@ -1382,6 +1710,12 @@ void DemoAIModule::onFrame()
             // 兵力极少时完全不主动攻击，退回防守点依靠自动反击
             if (armyCount < 4)
             {
+                if (target->getType() == UnitTypes::Protoss_Shuttle ||
+                    target->getType() == UnitTypes::Terran_Dropship)
+                {
+                    u->attack(target);
+                    continue;
+                }
                 if (u->getDistance(defendTarget) > 80)
                     u->move(defendTarget);
                 continue;
