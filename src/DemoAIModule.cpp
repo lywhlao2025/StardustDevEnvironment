@@ -992,8 +992,6 @@ void DemoAIModule::onFrame()
     int basePvPDefensiveCannons = 0;
     if (enemyProtoss)
     {
-        if (gateways >= 2 && zealots >= 2) basePvPDefensiveCannons = 2;
-        if (completedCores > 0 && dragoons >= 2) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 1);
         if (enemyNearHome || proactiveDropDefense) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 2);
         if (enemyRobotics > 0 || roboticsDropThreat) basePvPDefensiveCannons = std::max(basePvPDefensiveCannons, 3);
         if (roboticsDropThreat && completedCores > 0 && dragoons >= 2)
@@ -1006,8 +1004,7 @@ void DemoAIModule::onFrame()
                                  frame < 24 * 60 * 10 &&
                                  (roboticsDropThreat ||
                                   proactiveDropDefense ||
-                                  enemyNearHome ||
-                                  completedCannons < std::max(2, basePvPDefensiveCannons));
+                                  enemyNearHome);
     int cannonReadyShortfall = std::max(0, basePvPDefensiveCannons - completedCannons);
     int defensiveCannonMineralReserve = 100 * cannonReadyShortfall;
     if (enemyNearHome && cannonReadyShortfall > 0)
@@ -1232,7 +1229,7 @@ void DemoAIModule::onFrame()
     {
         bool dropDefenseReady = roboticsDropThreat && completedCores > 0 && dragoons >= 2;
         bool earlyThreat = enemyNearHome || proactiveDropDefense || dropDefenseReady || (threatMask & (Threat_Proxy | Threat_Cloak));
-        bool pvpForgeTiming = gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4;
+        bool pvpForgeTiming = (enemyRobotics > 0 || roboticsDropThreat) && gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4;
         if (forges == 0 && pylons >= 1 && (earlyThreat || pvpForgeTiming))
         {
             tryBuild(UnitTypes::Protoss_Forge, myStart);
@@ -1279,7 +1276,7 @@ void DemoAIModule::onFrame()
     }
 
     if ((enemyNearHome || proactiveDropDefense || roboticsDropThreat || (threatMask & Threat_Cloak) ||
-         (gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4)) &&
+         ((enemyRobotics > 0 || roboticsDropThreat) && gateways >= 2 && zealots >= 4 && frame >= 24 * 60 * 4)) &&
         forges == 0 && pylons >= 1)
     {
         tryBuild(UnitTypes::Protoss_Forge, myStart);
@@ -1468,7 +1465,7 @@ void DemoAIModule::onFrame()
     int minAttackThreshold = 8;  // previously 24, lowered for aggressive play
     if (Broodwar->enemy()->getRace() == Races::None) minAttackThreshold = 4;
     else if (enemyGreed) minAttackThreshold = 6;
-    else if (enemyRush) minAttackThreshold = 16;
+    else if (enemyRush) minAttackThreshold = enemyNearHome ? 16 : 8;
     else if (enemyPressure) minAttackThreshold = 10;
     if (earlyPvP && ((threatMask & Threat_TechRush) || enemyDragoons > 0))
     {
