@@ -1279,6 +1279,19 @@ void DemoAIModule::onFrame()
         }
     }
 
+    bool pvpGatewayCatchup = earlyPvP &&
+                             gateways < 4 &&
+                             pylons >= 2 &&
+                             probeCount >= 16 &&
+                             (enemyRush ||
+                              enemyDragoons > 0 ||
+                              (threatMask & Threat_TechRush) ||
+                              frame >= 24 * 60 * 4);
+    if (pvpGatewayCatchup && Broodwar->self()->minerals() >= 150)
+    {
+        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+    }
+
     if (enemyRush && gateways < 3 && pylons >= 2 && (!earlyPvP || cores > 0 || coreInProgress))
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
