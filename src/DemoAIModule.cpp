@@ -887,9 +887,8 @@ void DemoAIModule::onFrame()
         }
     }
 
-    // Proxy pylon once enemy is found
-    if (enemyStart && !proxyPylonStarted && scoutProbe && Broodwar->self()->minerals() >= 100 &&
-        !(Broodwar->enemy() && Broodwar->enemy()->getRace() == BWAPI::Races::Protoss))
+    // Proxy pylon once enemy is found. PvP needs a proactive cheese option against Locutus pressure.
+    if (enemyStart && !proxyPylonStarted && scoutProbe && Broodwar->self()->minerals() >= 100)
     {
         TilePosition proxyPos = Broodwar->getBuildLocation(UnitTypes::Protoss_Pylon, proxyAnchor);
         if (proxyPos.isValid() && scoutProbe->build(UnitTypes::Protoss_Pylon, proxyPos))
