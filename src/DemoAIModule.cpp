@@ -690,6 +690,8 @@ void DemoAIModule::onStart()
     idleCoreFrames = 0;
     idleNexusFrames = 0;
     workerCountAt5 = workerCountAt8 = workerCountAt10 = workerCountAt12 = -1;
+    armyCountAt5 = armyCountAt6 = armyCountAt7 = armyCountAt8 = -1;
+    gatewayCountAt5 = gatewayCountAt6 = gatewayCountAt7 = gatewayCountAt8 = -1;
     firstProxyFrame = firstTechFrame = firstExpandFrame = -1;
     lastFrameCount = Broodwar->getFrameCount();
     lastEnemyPressureFrame = -1;
@@ -709,6 +711,10 @@ void DemoAIModule::onEnd(bool isWinner)
 
     Log::Get() << "DIAG workers@5/8/10/12: "
                << workerCountAt5 << "/" << workerCountAt8 << "/" << workerCountAt10 << "/" << workerCountAt12;
+    Log::Get() << "DIAG army@5/6/7/8: "
+               << armyCountAt5 << "/" << armyCountAt6 << "/" << armyCountAt7 << "/" << armyCountAt8
+               << " gates@5/6/7/8: "
+               << gatewayCountAt5 << "/" << gatewayCountAt6 << "/" << gatewayCountAt7 << "/" << gatewayCountAt8;
     Log::Get() << "DIAG final supply=" << Broodwar->self()->supplyUsed() << "/" << Broodwar->self()->supplyTotal()
                << " probes=" << Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe)
                << " zealots=" << Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot)
@@ -773,6 +779,29 @@ void DemoAIModule::onFrame()
     if (workerCountAt8 < 0 && frame >= 8 * 60 * 24) workerCountAt8 = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe);
     if (workerCountAt10 < 0 && frame >= 10 * 60 * 24) workerCountAt10 = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe);
     if (workerCountAt12 < 0 && frame >= 12 * 60 * 24) workerCountAt12 = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe);
+    int currentArmyCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot) +
+                           Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Dragoon);
+    int currentGatewayCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Gateway);
+    if (armyCountAt5 < 0 && frame >= 5 * 60 * 24)
+    {
+        armyCountAt5 = currentArmyCount;
+        gatewayCountAt5 = currentGatewayCount;
+    }
+    if (armyCountAt6 < 0 && frame >= 6 * 60 * 24)
+    {
+        armyCountAt6 = currentArmyCount;
+        gatewayCountAt6 = currentGatewayCount;
+    }
+    if (armyCountAt7 < 0 && frame >= 7 * 60 * 24)
+    {
+        armyCountAt7 = currentArmyCount;
+        gatewayCountAt7 = currentGatewayCount;
+    }
+    if (armyCountAt8 < 0 && frame >= 8 * 60 * 24)
+    {
+        armyCountAt8 = currentArmyCount;
+        gatewayCountAt8 = currentGatewayCount;
+    }
 
     // Detect enemy start if known
     if (!enemyStart)

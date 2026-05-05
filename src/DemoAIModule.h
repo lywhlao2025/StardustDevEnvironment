@@ -49,6 +49,14 @@ public:
   int workerCountAt8 = -1;
   int workerCountAt10 = -1;
   int workerCountAt12 = -1;
+  int armyCountAt5 = -1;
+  int armyCountAt6 = -1;
+  int armyCountAt7 = -1;
+  int armyCountAt8 = -1;
+  int gatewayCountAt5 = -1;
+  int gatewayCountAt6 = -1;
+  int gatewayCountAt7 = -1;
+  int gatewayCountAt8 = -1;
   int firstProxyFrame = -1;
   int firstTechFrame = -1;
   int firstExpandFrame = -1;
