@@ -11,3 +11,11 @@ cmake-build-relwithdebinfo
 msvc
 out
 CMakeSettings.json
+build/
+test/replays/
+*.backup
+*.current
+src/DemoAIModule_[A-Z].cpp
+BrooDat.mpq
+Patch_rt.mpq
+StarDat.mpq
