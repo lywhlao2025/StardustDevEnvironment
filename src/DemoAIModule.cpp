@@ -961,8 +961,12 @@ void DemoAIModule::onFrame()
     {
         tryBuild(UnitTypes::Protoss_Pylon, myStart);
     }
-    // If we are supply tight and have bank, queue an extra pylon to avoid production idling
-    if ((projectedSupply <= 18) && pylonInProgress < 2 && Broodwar->self()->minerals() >= 200)
+    // PvP gateway floods hit the supply cap quickly; queue pylons before the bank idles production.
+    int pylonBufferThreshold = (earlyPvP && gateways >= 3) ? 28 : 18;
+    int pylonBufferCap = (earlyPvP && gateways >= 3) ? 3 : 2;
+    int pylonBufferMinerals = (earlyPvP && gateways >= 3) ? 150 : 200;
+    if ((projectedSupply <= pylonBufferThreshold) && pylonInProgress < pylonBufferCap &&
+        Broodwar->self()->minerals() >= pylonBufferMinerals)
     {
         tryBuild(UnitTypes::Protoss_Pylon, myStart);
     }
