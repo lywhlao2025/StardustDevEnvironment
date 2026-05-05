@@ -28,4 +28,40 @@ public:
   virtual void onUnitComplete(BWAPI::Unit unit);
   // Everything below this line is safe to modify.
 
+  // Basic strategy state
+  BWAPI::TilePosition myStart = BWAPI::TilePositions::Invalid;
+  BWAPI::TilePosition enemyStart = BWAPI::TilePositions::Invalid;
+  BWAPI::TilePosition proxyAnchor = BWAPI::TilePositions::Invalid;
+  int scoutIndex = 0;
+  int lastScoutFrame = 0;
+  bool proxyPylonStarted = false;
+  bool proxyPylonCompleted = false;
+  int scoutProbeId = -1;
+
+  // Threat/response + diagnostics state
+  int threatMask = 0;
+  int responseMask = 0;
+  int supplyBlockedFrames = 0;
+  int idleGatewayFrames = 0;
+  int idleCoreFrames = 0;
+  int idleNexusFrames = 0;
+  int workerCountAt5 = -1;
+  int workerCountAt8 = -1;
+  int workerCountAt10 = -1;
+  int workerCountAt12 = -1;
+  int firstProxyFrame = -1;
+  int firstTechFrame = -1;
+  int firstExpandFrame = -1;
+  int lastFrameCount = 0;
+  int lastEnemyPressureFrame = -1;
+
+  // Enemy memory / map search state
+  BWAPI::TilePosition lastEnemyBuildingTile = BWAPI::TilePositions::Invalid;
+  int armySearchIndex = 0;
+  int lastArmySearchFrame = 0;
+
+  // Combat coordination state
+  int focusTargetId = -1;
+  int focusTargetFrame = 0;
+  int retreatUntilFrame = 0;
 };
