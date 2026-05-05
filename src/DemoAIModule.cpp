@@ -1608,6 +1608,7 @@ void DemoAIModule::onFrame()
 
     if (homeDefenseActive || enemyNearHome)
     {
+        int pulledDefenseWorkers = 0;
         for (auto &u : Broodwar->self()->getUnits())
         {
             if (!u->exists()) continue;
@@ -1618,6 +1619,7 @@ void DemoAIModule::onFrame()
             double nearestThreatDist = 1000000.0;
             double nearestMeleeThreatDist = 1000000.0;
             Position nearestThreatPos = Position(0, 0);
+            Unit nearestThreat = nullptr;
             for (auto &enemy : Broodwar->enemy()->getUnits())
             {
                 if (!enemy->exists()) continue;
@@ -1628,6 +1630,7 @@ void DemoAIModule::onFrame()
                 {
                     nearestThreatDist = dist;
                     nearestThreatPos = enemy->getPosition();
+                    nearestThreat = enemy;
                 }
                 if (!enemy->isFlying() &&
                     enemy->getType().groundWeapon() != WeaponTypes::None &&
@@ -1639,6 +1642,19 @@ void DemoAIModule::onFrame()
 
             bool urgentThreat = nearestThreatDist <= 240.0 || nearestMeleeThreatDist <= 320.0;
             if (!urgentThreat) continue;
+
+            bool pullWorkerDefense = enemyInBaseNow &&
+                                     armyCount < 10 &&
+                                     probeCount > 8 &&
+                                     pulledDefenseWorkers < 10 &&
+                                     nearestThreat &&
+                                     nearestThreatDist <= 420.0;
+            if (pullWorkerDefense)
+            {
+                u->attack(nearestThreat);
+                pulledDefenseWorkers++;
+                continue;
+            }
 
             if (nearestMeleeThreatDist <= 192.0)
             {
