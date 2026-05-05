@@ -1063,6 +1063,10 @@ void DemoAIModule::onFrame()
         {
             desiredGasWorkers = 1;
         }
+        if (completedCores > 0 && Broodwar->self()->gas() >= 100 && Broodwar->self()->minerals() < 200)
+        {
+            desiredGasWorkers = dragoons < 2 ? 1 : 0;
+        }
     }
     manageGas(scoutProbe, desiredGasWorkers);
 
