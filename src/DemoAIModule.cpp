@@ -1073,7 +1073,7 @@ void DemoAIModule::onFrame()
         }
         if (completedCores > 0 && (enemyRobotics > 0 || roboticsDropThreat) && dragoons < 6)
         {
-            desiredGasWorkers = std::max(desiredGasWorkers, 2);
+            desiredGasWorkers = std::max(desiredGasWorkers, Broodwar->self()->gas() < 150 ? 2 : 1);
         }
         if (completedCores > 0 && dragoons >= 2 && Broodwar->self()->gas() > Broodwar->self()->minerals() + 150)
         {
@@ -1086,6 +1086,10 @@ void DemoAIModule::onFrame()
         if (completedCores > 0 && dragoons >= 2 && Broodwar->self()->gas() >= 150 && Broodwar->self()->minerals() < 300)
         {
             desiredGasWorkers = 0;
+        }
+        if (completedCores > 0 && frame < 24 * 60 * 8 && Broodwar->self()->gas() >= 300)
+        {
+            desiredGasWorkers = ((enemyRobotics > 0 || roboticsDropThreat) && dragoons < 2) ? 1 : 0;
         }
     }
     manageGas(scoutProbe, desiredGasWorkers);
