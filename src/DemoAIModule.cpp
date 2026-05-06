@@ -910,8 +910,9 @@ void DemoAIModule::onFrame()
         }
     }
 
-    // Proxy pylon once enemy is found. PvP needs a proactive cheese option against Locutus pressure.
-    if (enemyStart && !proxyPylonStarted && scoutProbe && Broodwar->self()->minerals() >= 100)
+    bool allowProxyPylon = !(Broodwar->enemy() && Broodwar->enemy()->getRace() == Races::Protoss);
+    // Proxy pylon once enemy is found. PvP follows the replay-backed main-base 2Gate/Gas/Core line.
+    if (allowProxyPylon && enemyStart && !proxyPylonStarted && scoutProbe && Broodwar->self()->minerals() >= 100)
     {
         TilePosition proxyPos = Broodwar->getBuildLocation(UnitTypes::Protoss_Pylon, proxyAnchor);
         if (proxyPos.isValid() && scoutProbe->build(UnitTypes::Protoss_Pylon, proxyPos))
@@ -1253,7 +1254,10 @@ void DemoAIModule::onFrame()
 
     if (gateways == 0 && supplyUsed >= 10 * 2 && countUnits(UnitTypes::Protoss_Pylon, true) > 0)
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
     if (pylons < 2 && gateways >= 1 && supplyUsed >= 14 * 2)
@@ -1263,12 +1267,18 @@ void DemoAIModule::onFrame()
 
     if (earlyPvP && gateways < 2 && pylons >= 1 && supplyUsed >= 12 * 2)
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
     if (gateways < 2 && pylons >= 2 && supplyUsed >= 16 * 2)
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
     if (proxyPylonCompleted && proxyGateways < 2 && Broodwar->self()->minerals() >= 150)
