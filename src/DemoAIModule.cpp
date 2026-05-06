@@ -692,6 +692,9 @@ void DemoAIModule::onStart()
     workerCountAt5 = workerCountAt8 = workerCountAt10 = workerCountAt12 = -1;
     armyCountAt5 = armyCountAt6 = armyCountAt7 = armyCountAt8 = -1;
     gatewayCountAt5 = gatewayCountAt6 = gatewayCountAt7 = gatewayCountAt8 = -1;
+    pylonCountAt5 = pylonCountAt6 = pylonCountAt7 = pylonCountAt8 = -1;
+    supplyUsedAt5 = supplyUsedAt6 = supplyUsedAt7 = supplyUsedAt8 = -1;
+    supplyTotalAt5 = supplyTotalAt6 = supplyTotalAt7 = supplyTotalAt8 = -1;
     firstProxyFrame = firstTechFrame = firstExpandFrame = -1;
     lastFrameCount = Broodwar->getFrameCount();
     lastEnemyPressureFrame = -1;
@@ -715,6 +718,13 @@ void DemoAIModule::onEnd(bool isWinner)
                << armyCountAt5 << "/" << armyCountAt6 << "/" << armyCountAt7 << "/" << armyCountAt8
                << " gates@5/6/7/8: "
                << gatewayCountAt5 << "/" << gatewayCountAt6 << "/" << gatewayCountAt7 << "/" << gatewayCountAt8;
+    Log::Get() << "DIAG pylons@5/6/7/8: "
+               << pylonCountAt5 << "/" << pylonCountAt6 << "/" << pylonCountAt7 << "/" << pylonCountAt8
+               << " supply@5/6/7/8: "
+               << supplyUsedAt5 << "/" << supplyTotalAt5 << " "
+               << supplyUsedAt6 << "/" << supplyTotalAt6 << " "
+               << supplyUsedAt7 << "/" << supplyTotalAt7 << " "
+               << supplyUsedAt8 << "/" << supplyTotalAt8;
     Log::Get() << "DIAG final supply=" << Broodwar->self()->supplyUsed() << "/" << Broodwar->self()->supplyTotal()
                << " probes=" << Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe)
                << " zealots=" << Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot)
@@ -782,25 +792,38 @@ void DemoAIModule::onFrame()
     int currentArmyCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot) +
                            Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Dragoon);
     int currentGatewayCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Gateway);
+    int currentPylonCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Pylon);
     if (armyCountAt5 < 0 && frame >= 5 * 60 * 24)
     {
         armyCountAt5 = currentArmyCount;
         gatewayCountAt5 = currentGatewayCount;
+        pylonCountAt5 = currentPylonCount;
+        supplyUsedAt5 = supplyUsed;
+        supplyTotalAt5 = supplyTotal;
     }
     if (armyCountAt6 < 0 && frame >= 6 * 60 * 24)
     {
         armyCountAt6 = currentArmyCount;
         gatewayCountAt6 = currentGatewayCount;
+        pylonCountAt6 = currentPylonCount;
+        supplyUsedAt6 = supplyUsed;
+        supplyTotalAt6 = supplyTotal;
     }
     if (armyCountAt7 < 0 && frame >= 7 * 60 * 24)
     {
         armyCountAt7 = currentArmyCount;
         gatewayCountAt7 = currentGatewayCount;
+        pylonCountAt7 = currentPylonCount;
+        supplyUsedAt7 = supplyUsed;
+        supplyTotalAt7 = supplyTotal;
     }
     if (armyCountAt8 < 0 && frame >= 8 * 60 * 24)
     {
         armyCountAt8 = currentArmyCount;
         gatewayCountAt8 = currentGatewayCount;
+        pylonCountAt8 = currentPylonCount;
+        supplyUsedAt8 = supplyUsed;
+        supplyTotalAt8 = supplyTotal;
     }
 
     // Detect enemy start if known
