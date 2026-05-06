@@ -1225,6 +1225,10 @@ void DemoAIModule::onFrame()
     {
         int gasArmyGate = ((threatMask & Threat_TechRush) || enemyRobotics > 0 || enemyDragoons > 0) ? 6 : 8;
         readyForGas = gateways >= 3 && probeCount >= 18 && zealots >= gasArmyGate;
+        if (gateways >= 2 && probeCount >= 13)
+        {
+            readyForGas = true;
+        }
         if (gateways >= 2 && probeCount >= 15 && zealots >= 2)
         {
             readyForGas = true;
@@ -1240,11 +1244,11 @@ void DemoAIModule::onFrame()
     bool readyForCore = cores == 0 &&
                         !coreInProgress &&
                         countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
-                        pylons >= 2 &&
+                        pylons >= (earlyPvP ? 1 : 2) &&
                         (!proxyMode || proxyGateways >= 2);
     if (readyForCore &&
         (!earlyPvP ||
-         (gateways >= 2 && zealots >= 2) ||
+         gateways >= 2 ||
          enemyDragoons > 0))
     {
         tryBuild(UnitTypes::Protoss_Cybernetics_Core, myStart);
