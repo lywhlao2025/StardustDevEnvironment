@@ -1203,6 +1203,11 @@ void DemoAIModule::onFrame()
         tryBuild(UnitTypes::Protoss_Pylon, myStart);
     }
 
+    if (earlyPvP && gateways < 2 && pylons >= 1 && supplyUsed >= 12 * 2)
+    {
+        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+    }
+
     if (gateways < 2 && pylons >= 2 && supplyUsed >= 16 * 2)
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
