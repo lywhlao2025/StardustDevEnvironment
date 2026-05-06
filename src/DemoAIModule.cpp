@@ -1616,6 +1616,7 @@ void DemoAIModule::onFrame()
     bool shouldAttack = canProactiveAttack || counterReady || committedAttack;
     bool shouldDefend = weak || ((responseMask & Resp_Defend) && !counterReady);
     if (committedAttack && !weak) shouldDefend = false;
+    bool pvpRegrouping = earlyPvP && !shouldAttack && frame < 24 * 60 * 8;
 
     if (weak && retreatUntilFrame < frame + 48) retreatUntilFrame = frame + 48;
 
@@ -1839,7 +1840,7 @@ void DemoAIModule::onFrame()
         // ---- 空闲调度 ----
         if (u->isIdle() || u->getOrder() == Orders::PlayerGuard)
         {
-            if (shouldDefend || enemyNear)
+            if (shouldDefend || enemyNear || pvpRegrouping)
                 u->attack(defendTarget);
             else
                 u->attack(attackTarget);
