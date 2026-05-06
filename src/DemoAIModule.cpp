@@ -1008,7 +1008,7 @@ void DemoAIModule::onFrame()
     int targetOpeningDragoons = 0;
     if (earlyPvP)
     {
-        targetEarlyZealots = 4;
+        targetEarlyZealots = (frame < 24 * 60 * 6) ? 6 : 4;
         if (enemyRush || (threatMask & Threat_TechRush)) targetEarlyZealots = 6;
         if (enemyNearHome || enemyDragoons > 0) targetEarlyZealots = 8;
         if (enemyRobotics > 0) targetEarlyZealots = std::min(targetEarlyZealots, 4);
@@ -1046,6 +1046,7 @@ void DemoAIModule::onFrame()
     bool reserveForFirstDragoons = earlyPvP &&
                                    completedCores > 0 &&
                                    dragoons < targetOpeningDragoons;
+    bool zealotFloorNeeded = earlyPvP && zealots < targetEarlyZealots;
     int desiredGasWorkers = 3 * countUnits(UnitTypes::Protoss_Assimilator, true);
     if (earlyPvP && desiredGasWorkers > 0)
     {
@@ -1424,7 +1425,7 @@ void DemoAIModule::onFrame()
         }
     }
 
-    if (reserveForFirstDragoons && supplyRemaining >= 4)
+    if (reserveForFirstDragoons && !zealotFloorNeeded && supplyRemaining >= 4)
     {
         for (auto &u : Broodwar->self()->getUnits())
         {
@@ -1484,7 +1485,7 @@ void DemoAIModule::onFrame()
         }
 
         bool wantGoon = (cores > 0 && Broodwar->self()->gas() >= 50);
-        if (earlyPvP && zealots < targetEarlyZealots)
+        if (zealotFloorNeeded)
         {
             wantGoon = false;
         }
@@ -1492,7 +1493,7 @@ void DemoAIModule::onFrame()
                                        cores > 0 &&
                                        (roboticsDropThreat || enemyRobotics > 0) &&
                                        dragoons < 6;
-        if (reserveForFirstDragoons || roboticsDragoonPriority)
+        if ((reserveForFirstDragoons && !zealotFloorNeeded) || roboticsDragoonPriority)
         {
             wantGoon = true;
         }
