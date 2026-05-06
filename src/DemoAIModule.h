@@ -90,6 +90,8 @@ public:
   int pvpReserveFirstDragoonsFrames = 0;
   bool pvpFirstDragoonDiagPrinted = false;
   bool pvpFirstDragoonTrainDiagPrinted = false;
+  bool pvpPylonDiagPrinted = false;
+  bool pvpAttackDiagPrinted = false;
   int firstProxyFrame = -1;
   int firstTechFrame = -1;
   int firstExpandFrame = -1;
