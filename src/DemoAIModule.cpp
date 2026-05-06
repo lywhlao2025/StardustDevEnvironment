@@ -1599,7 +1599,7 @@ void DemoAIModule::onFrame()
     }
     if (earlyPvP && !enemyGreed && frame < 24 * 60 * 8)
     {
-        minAttackThreshold = std::max(minAttackThreshold, 20);
+        minAttackThreshold = std::max(minAttackThreshold, 16);
     }
     bool canProactiveAttack = (armyCount >= minAttackThreshold);
     bool recentHomePressure = lastEnemyPressureFrame >= 0 &&
