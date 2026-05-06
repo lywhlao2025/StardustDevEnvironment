@@ -982,6 +982,7 @@ void DemoAIModule::onFrame()
     bool needSupply = projectedSupply <= 12 ||
                       (projectedSupply <= gatewaySupplyThreshold && gateways >= 2) ||
                       (projectedSupply <= 18 && gateways >= 3) ||
+                      (earlyPvP && gateways >= 3 && projectedSupply <= 30) ||
                       (earlyPvP && gateways >= 4 && projectedSupply <= 34);
     if ((needSupply || urgentSupply) && pylonInProgress == 0)
     {
@@ -1004,13 +1005,13 @@ void DemoAIModule::onFrame()
     }
     if (earlyPvP && gateways >= 3)
     {
-        pylonBufferThreshold = 28;
-        pylonBufferCap = 3;
-        pylonBufferMinerals = 150;
+        pylonBufferThreshold = 36;
+        pylonBufferCap = 4;
+        pylonBufferMinerals = 100;
     }
     if (earlyPvP && gateways >= 4)
     {
-        pylonBufferThreshold = 40;
+        pylonBufferThreshold = 44;
         pylonBufferCap = 4;
         pylonBufferMinerals = 100;
     }
