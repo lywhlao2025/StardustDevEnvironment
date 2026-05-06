@@ -1694,10 +1694,12 @@ void DemoAIModule::onFrame()
             bool urgentThreat = nearestThreatDist <= 240.0 || nearestMeleeThreatDist <= 320.0;
             if (!urgentThreat) continue;
 
+            int maxPulledDefenseWorkers = (earlyPvP && frame >= 24 * 60 * 6) ? 4 : 10;
+            int workerPullArmyLimit = (earlyPvP && frame >= 24 * 60 * 6) ? 6 : 10;
             bool pullWorkerDefense = enemyInBaseNow &&
-                                     armyCount < 10 &&
+                                     armyCount < workerPullArmyLimit &&
                                      probeCount > 8 &&
-                                     pulledDefenseWorkers < 10 &&
+                                     pulledDefenseWorkers < maxPulledDefenseWorkers &&
                                      nearestThreat &&
                                      nearestThreatDist <= 420.0;
             if (pullWorkerDefense)
