@@ -60,6 +60,9 @@ namespace
         {UnitTypes::Protoss_Observatory, 1, 300 * kFramesPerSecond}
     };
 
+    int gFirstCoreBuildAttemptFrame = -1;
+    int gCoreBuildAttemptCount = 0;
+
     // 统计我方某类单位数量；completedOnly=true 时仅统计已完成单位。
     int countUnits(UnitType type, bool completedOnly = false)
     {
@@ -147,8 +150,13 @@ namespace
 
         bool issued = builder->build(type, buildPos);
         if (issued && typeId >= 0 && typeId < 256) lastAttemptFrame[typeId] = frame;
-        return issued;
-    }
+        if (type == UnitTypes::Protoss_Cybernetics_Core)
+        {
+            if (gFirstCoreBuildAttemptFrame < 0) gFirstCoreBuildAttemptFrame = frame;
+            gCoreBuildAttemptCount++;
+        }
+    return issued;
+}
 
     // 根据节奏模板补齐关键建筑（用于 PvP 早期时间点约束）。
     void applyBuildMilestones(const BuildMilestone *milestones, int count, TilePosition near)
@@ -691,10 +699,21 @@ void DemoAIModule::onStart()
     idleNexusFrames = 0;
     workerCountAt5 = workerCountAt8 = workerCountAt10 = workerCountAt12 = -1;
     armyCountAt5 = armyCountAt6 = armyCountAt7 = armyCountAt8 = -1;
+    zealotCountAt5 = zealotCountAt6 = zealotCountAt7 = zealotCountAt8 = -1;
+    dragoonCountAt5 = dragoonCountAt6 = dragoonCountAt7 = dragoonCountAt8 = -1;
     gatewayCountAt5 = gatewayCountAt6 = gatewayCountAt7 = gatewayCountAt8 = -1;
     pylonCountAt5 = pylonCountAt6 = pylonCountAt7 = pylonCountAt8 = -1;
+    assimilatorCountAt5 = assimilatorCountAt6 = assimilatorCountAt7 = assimilatorCountAt8 = -1;
+    coreCountAt5 = coreCountAt6 = coreCountAt7 = coreCountAt8 = -1;
     supplyUsedAt5 = supplyUsedAt6 = supplyUsedAt7 = supplyUsedAt8 = -1;
     supplyTotalAt5 = supplyTotalAt6 = supplyTotalAt7 = supplyTotalAt8 = -1;
+    pvpCorePendingFrames = 0;
+    pvpNeedFirstDragoonsFrames = 0;
+    pvpReserveFirstDragoonsFrames = 0;
+    pvpFirstDragoonDiagPrinted = false;
+    pvpFirstDragoonTrainDiagPrinted = false;
+    gFirstCoreBuildAttemptFrame = -1;
+    gCoreBuildAttemptCount = 0;
     firstProxyFrame = firstTechFrame = firstExpandFrame = -1;
     lastFrameCount = Broodwar->getFrameCount();
     lastEnemyPressureFrame = -1;
@@ -716,10 +735,18 @@ void DemoAIModule::onEnd(bool isWinner)
                << workerCountAt5 << "/" << workerCountAt8 << "/" << workerCountAt10 << "/" << workerCountAt12;
     Log::Get() << "DIAG army@5/6/7/8: "
                << armyCountAt5 << "/" << armyCountAt6 << "/" << armyCountAt7 << "/" << armyCountAt8
+               << " zealots@5/6/7/8: "
+               << zealotCountAt5 << "/" << zealotCountAt6 << "/" << zealotCountAt7 << "/" << zealotCountAt8
+               << " dragoons@5/6/7/8: "
+               << dragoonCountAt5 << "/" << dragoonCountAt6 << "/" << dragoonCountAt7 << "/" << dragoonCountAt8
                << " gates@5/6/7/8: "
                << gatewayCountAt5 << "/" << gatewayCountAt6 << "/" << gatewayCountAt7 << "/" << gatewayCountAt8;
     Log::Get() << "DIAG pylons@5/6/7/8: "
                << pylonCountAt5 << "/" << pylonCountAt6 << "/" << pylonCountAt7 << "/" << pylonCountAt8
+               << " assimilators@5/6/7/8: "
+               << assimilatorCountAt5 << "/" << assimilatorCountAt6 << "/" << assimilatorCountAt7 << "/" << assimilatorCountAt8
+               << " cores@5/6/7/8: "
+               << coreCountAt5 << "/" << coreCountAt6 << "/" << coreCountAt7 << "/" << coreCountAt8
                << " supply@5/6/7/8: "
                << supplyUsedAt5 << "/" << supplyTotalAt5 << " "
                << supplyUsedAt6 << "/" << supplyTotalAt6 << " "
@@ -739,6 +766,13 @@ void DemoAIModule::onEnd(bool isWinner)
                << (firstProxyFrame >= 0 ? frameToMin(firstProxyFrame) : -1.0) << "/"
                << (firstTechFrame >= 0 ? frameToMin(firstTechFrame) : -1.0) << "/"
                << (firstExpandFrame >= 0 ? frameToMin(firstExpandFrame) : -1.0);
+    Log::Get() << "DIAG coreBuild attempts/frame="
+               << gCoreBuildAttemptCount << "/"
+               << (gFirstCoreBuildAttemptFrame >= 0 ? frameToMin(gFirstCoreBuildAttemptFrame) : -1.0);
+    Log::Get() << "DIAG pvpWindowFrames corePending/firstDragoons/reserve="
+               << pvpCorePendingFrames << "/"
+               << pvpNeedFirstDragoonsFrames << "/"
+               << pvpReserveFirstDragoonsFrames;
 
     std::string failReason = "Win";
     if (!isWinner)
@@ -791,37 +825,57 @@ void DemoAIModule::onFrame()
     if (workerCountAt12 < 0 && frame >= 12 * 60 * 24) workerCountAt12 = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Probe);
     int currentArmyCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot) +
                            Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Dragoon);
+    int currentZealotCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Zealot);
+    int currentDragoonCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Dragoon);
     int currentGatewayCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Gateway);
     int currentPylonCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Pylon);
+    int currentAssimilatorCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Assimilator);
+    int currentCoreCount = Broodwar->self()->completedUnitCount(UnitTypes::Protoss_Cybernetics_Core);
     if (armyCountAt5 < 0 && frame >= 5 * 60 * 24)
     {
         armyCountAt5 = currentArmyCount;
+        zealotCountAt5 = currentZealotCount;
+        dragoonCountAt5 = currentDragoonCount;
         gatewayCountAt5 = currentGatewayCount;
         pylonCountAt5 = currentPylonCount;
+        assimilatorCountAt5 = currentAssimilatorCount;
+        coreCountAt5 = currentCoreCount;
         supplyUsedAt5 = supplyUsed;
         supplyTotalAt5 = supplyTotal;
     }
     if (armyCountAt6 < 0 && frame >= 6 * 60 * 24)
     {
         armyCountAt6 = currentArmyCount;
+        zealotCountAt6 = currentZealotCount;
+        dragoonCountAt6 = currentDragoonCount;
         gatewayCountAt6 = currentGatewayCount;
         pylonCountAt6 = currentPylonCount;
+        assimilatorCountAt6 = currentAssimilatorCount;
+        coreCountAt6 = currentCoreCount;
         supplyUsedAt6 = supplyUsed;
         supplyTotalAt6 = supplyTotal;
     }
     if (armyCountAt7 < 0 && frame >= 7 * 60 * 24)
     {
         armyCountAt7 = currentArmyCount;
+        zealotCountAt7 = currentZealotCount;
+        dragoonCountAt7 = currentDragoonCount;
         gatewayCountAt7 = currentGatewayCount;
         pylonCountAt7 = currentPylonCount;
+        assimilatorCountAt7 = currentAssimilatorCount;
+        coreCountAt7 = currentCoreCount;
         supplyUsedAt7 = supplyUsed;
         supplyTotalAt7 = supplyTotal;
     }
     if (armyCountAt8 < 0 && frame >= 8 * 60 * 24)
     {
         armyCountAt8 = currentArmyCount;
+        zealotCountAt8 = currentZealotCount;
+        dragoonCountAt8 = currentDragoonCount;
         gatewayCountAt8 = currentGatewayCount;
         pylonCountAt8 = currentPylonCount;
+        assimilatorCountAt8 = currentAssimilatorCount;
+        coreCountAt8 = currentCoreCount;
         supplyUsedAt8 = supplyUsed;
         supplyTotalAt8 = supplyTotal;
     }
@@ -992,7 +1046,7 @@ void DemoAIModule::onFrame()
     bool enemyPressure = enemyNearHome || enemyRush || (threatMask & Threat_Proxy);
     bool enemyGreed = (enemyNexus >= 2 && Broodwar->getFrameCount() < 9000);
     bool enemyProtoss = (Broodwar->enemy() && Broodwar->enemy()->getRace() == BWAPI::Races::Protoss);
-    bool earlyPvP = enemyProtoss && frame < 24 * 60 * 7;
+    bool earlyPvP = enemyProtoss && frame < 24 * 60 * 9;
     bool roboticsDropThreat = enemyProtoss && enemyRobotics > 0 && frame < 24 * 60 * 9;
     if (enemyPressure && lastEnemyPressureFrame < frame) lastEnemyPressureFrame = frame;
 
@@ -1001,7 +1055,7 @@ void DemoAIModule::onFrame()
     int incomingSupply = pendingSupplyFromPylons();
     int projectedSupply = supplyRemaining + incomingSupply;
 
-    bool urgentSupply = supplyRemaining <= 4;
+    bool urgentSupply = earlyPvP ? supplyRemaining <= 8 : supplyRemaining <= 4;
     int gatewaySupplyThreshold = earlyPvP ? 22 : 14;
     bool needSupply = projectedSupply <= 12 ||
                       (projectedSupply <= gatewaySupplyThreshold && gateways >= 2) ||
@@ -1039,6 +1093,18 @@ void DemoAIModule::onFrame()
         pylonBufferCap = 4;
         pylonBufferMinerals = 100;
     }
+    if (earlyPvP && cores > 0)
+    {
+        pylonBufferThreshold = std::max(pylonBufferThreshold, 52);
+        pylonBufferCap = std::max(pylonBufferCap, 5);
+        pylonBufferMinerals = std::min(pylonBufferMinerals, 50);
+    }
+    if (earlyPvP && dragoons >= 2)
+    {
+        pylonBufferThreshold = std::max(pylonBufferThreshold, 72);
+        pylonBufferCap = std::max(pylonBufferCap, 7);
+        pylonBufferMinerals = std::min(pylonBufferMinerals, 25);
+    }
     if ((projectedSupply <= pylonBufferThreshold) && pylonInProgress < pylonBufferCap &&
         Broodwar->self()->minerals() >= pylonBufferMinerals)
     {
@@ -1054,12 +1120,21 @@ void DemoAIModule::onFrame()
     int targetOpeningDragoons = 0;
     if (earlyPvP)
     {
-        targetEarlyZealots = (frame < 24 * 60 * 6) ? 6 : 4;
+        targetEarlyZealots = 2;
         if (enemyRush || (threatMask & Threat_TechRush)) targetEarlyZealots = 6;
-        if (enemyNearHome || enemyDragoons > 0) targetEarlyZealots = 8;
+        if (enemyNearHome) targetEarlyZealots = std::max(targetEarlyZealots, 6);
+        if (enemyDragoons > 0) targetEarlyZealots = 8;
         if (enemyRobotics > 0) targetEarlyZealots = std::min(targetEarlyZealots, 4);
+        if (countUnits(UnitTypes::Protoss_Assimilator, true) >= 1)
+        {
+            targetEarlyZealots = std::min(targetEarlyZealots, 4);
+        }
 
         targetOpeningDragoons = ((threatMask & Threat_TechRush) || enemyRobotics > 0 || enemyDragoons > 0 || enemyNearHome) ? 4 : 2;
+        if (cores > 0)
+        {
+            targetOpeningDragoons = std::max(targetOpeningDragoons, 4);
+        }
     }
     bool proactiveDropDefense = enemyProtoss &&
                                 completedCores > 0 &&
@@ -1092,11 +1167,18 @@ void DemoAIModule::onFrame()
     bool reserveForFirstDragoons = earlyPvP &&
                                    completedCores > 0 &&
                                    dragoons < targetOpeningDragoons;
-    bool zealotFloorNeeded = earlyPvP && zealots < targetEarlyZealots;
+    bool zealotFloorNeeded = earlyPvP &&
+                             cores == 0 &&
+                             countUnits(UnitTypes::Protoss_Assimilator, true) == 0 &&
+                             zealots < targetEarlyZealots;
     int desiredGasWorkers = 3 * countUnits(UnitTypes::Protoss_Assimilator, true);
     if (earlyPvP && desiredGasWorkers > 0)
     {
         desiredGasWorkers = 2;
+        if (countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 && dragoons < 4)
+        {
+            desiredGasWorkers = 1;
+        }
         if (completedCores > 0 && dragoons < targetOpeningDragoons)
         {
             desiredGasWorkers = Broodwar->self()->gas() < 150 ? 3 : 1;
@@ -1135,6 +1217,7 @@ void DemoAIModule::onFrame()
     if (earlyPvP)
     {
         int pvpProbeCap = 16;
+        if (completedCores > 0 || dragoons > 0) pvpProbeCap = 18;
         if (gateways >= 2 && zealots >= 6) pvpProbeCap = 18;
         if ((zealots + dragoons) >= 12) pvpProbeCap = 20;
         desiredProbes = std::min(desiredProbes, pvpProbeCap);
@@ -1144,7 +1227,10 @@ void DemoAIModule::onFrame()
         desiredProbes = std::min(desiredProbes, 18);
     }
 
-    bool prioritizeEarlyArmy = earlyPvP && gateways >= 1 && zealots < targetEarlyZealots;
+    bool prioritizeEarlyArmy = earlyPvP &&
+                               gateways >= 1 &&
+                               zealots < targetEarlyZealots &&
+                               !(countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 && gateways >= 2);
     if (prioritizeEarlyArmy && supplyRemaining >= 4)
     {
         for (auto &u : Broodwar->self()->getUnits())
@@ -1223,7 +1309,8 @@ void DemoAIModule::onFrame()
         !pvpPreferRangedMidgame &&
         zealots < 48 &&
         supplyRemaining >= 4 &&
-        Broodwar->self()->minerals() >= 100)
+        Broodwar->self()->minerals() >= 100 &&
+        !(earlyPvP && countUnits(UnitTypes::Protoss_Assimilator, true) >= 1))
     {
         for (auto &u : Broodwar->self()->getUnits())
         {
@@ -1323,6 +1410,15 @@ void DemoAIModule::onFrame()
     }
 
     bool earlyAntiCloak = enemyProtoss && ((threatMask & Threat_Cloak) || enemyCitadel > 0 || enemyTemplarArchives > 0);
+    bool pvpCorePending = earlyPvP &&
+                          cores == 0 &&
+                          countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
+                          gateways >= 2 &&
+                          probeCount >= 13;
+    bool pvpNeedFirstDragoons = earlyPvP && cores > 0 && dragoons < 2;
+    if (pvpCorePending) pvpCorePendingFrames++;
+    if (pvpNeedFirstDragoons) pvpNeedFirstDragoonsFrames++;
+    if (reserveForFirstDragoons) pvpReserveFirstDragoonsFrames++;
 
     // Detection chain: after Core, prioritize Robotics -> Observatory.
     // Build earlier if cloak threat detected; otherwise wait until we have a modest army.
@@ -1363,40 +1459,65 @@ void DemoAIModule::onFrame()
                              gateways < 4 &&
                              pylons >= 2 &&
                              probeCount >= 16 &&
+                             !pvpCorePending &&
+                             !pvpNeedFirstDragoons &&
+                             (dragoons >= 2 || !earlyPvP) &&
                              (enemyRush ||
                               enemyDragoons > 0 ||
                               (threatMask & Threat_TechRush) ||
                               frame >= 24 * 60 * 4);
     if (pvpGatewayCatchup && Broodwar->self()->minerals() >= 150)
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
-    if (enemyRush && gateways < 3 && pylons >= 2 && (!earlyPvP || cores > 0 || coreInProgress))
+    if (enemyRush && gateways < 3 && pylons >= 2 && (!earlyPvP || cores > 0 || coreInProgress) && !pvpCorePending && !pvpNeedFirstDragoons)
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
     if (gateways < 3 && pylons >= 3 && supplyUsed >= 20 * 2 && Broodwar->self()->minerals() >= 300 &&
-        (!earlyPvP || cores > 0 || coreInProgress))
+        (!earlyPvP || cores > 0 || coreInProgress) && !pvpCorePending && !pvpNeedFirstDragoons &&
+        (!earlyPvP || dragoons >= 2))
     {
-        tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
+        if (!tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Gateway, myStart);
+        }
     }
 
     // Spend large mineral banks on production first. Easy/DoNothing losses were
     // caused by 3 Gateways floating 3000+ minerals, so add up to 6 Gateways
     // before expansion/tech if the economy is already at the 24-Probe target.
-    if (gateways < 6 && pylons >= 2 && probeCount >= 24 && Broodwar->self()->minerals() >= 800)
+    if (gateways < 6 && pylons >= 2 && probeCount >= 24 && Broodwar->self()->minerals() >= 800 &&
+        !pvpCorePending && !pvpNeedFirstDragoons && (!earlyPvP || dragoons >= 2))
     {
         if (tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear)) gateways++;
     }
 
-    if (gateways < 4 && dragoons >= 3 && Broodwar->self()->minerals() >= 300)
+    if (gateways < 4 && dragoons >= 3 && Broodwar->self()->minerals() >= 300 && (!earlyPvP || dragoons >= 2))
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
     }
 
-    if ((responseMask & Resp_IncreaseProd) && gateways < 4 && pylons >= 3 && Broodwar->self()->minerals() >= 300)
+    TilePosition coreBuildNear = firstCompletedPylonTile();
+    if (!coreBuildNear) coreBuildNear = myStart;
+    if (earlyPvP && cores == 0 && assimilators > 0 && gateways >= 2 && probeCount >= 13 && Broodwar->self()->minerals() >= 150)
+    {
+        if (!tryBuild(UnitTypes::Protoss_Cybernetics_Core, coreBuildNear))
+        {
+            tryBuild(UnitTypes::Protoss_Cybernetics_Core, myStart);
+        }
+    }
+
+    if ((responseMask & Resp_IncreaseProd) && gateways < 4 && pylons >= 3 && Broodwar->self()->minerals() >= 300 &&
+        (!earlyPvP || dragoons >= 2))
     {
         tryBuild(UnitTypes::Protoss_Gateway, gatewayBuildNear);
     }
@@ -1515,6 +1636,22 @@ void DemoAIModule::onFrame()
     // Train units
     int availableArmySupply = (supplyRemaining / 2) - probeQueued;
     if (availableArmySupply < 0) availableArmySupply = 0;
+    if (earlyPvP && completedCores > 0 && dragoons < 4)
+    {
+        availableArmySupply = std::max(availableArmySupply, 8);
+    }
+    if (earlyPvP && completedCores > 0 && dragoons < 4 && !pvpFirstDragoonDiagPrinted)
+    {
+        Log::Get() << "DIAG firstDragoonWindow minerals=" << Broodwar->self()->minerals()
+                   << " gas=" << Broodwar->self()->gas()
+                   << " supplyRemaining=" << supplyRemaining
+                   << " availableArmySupply=" << availableArmySupply
+                   << " probeQueued=" << probeQueued
+                   << " gateways=" << gateways
+                   << " zealots=" << zealots
+                   << " dragoons=" << dragoons;
+        pvpFirstDragoonDiagPrinted = true;
+    }
     bool reserveForCore = earlyPvP &&
                           cores == 0 &&
                           countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
@@ -1522,9 +1659,17 @@ void DemoAIModule::onFrame()
                           Broodwar->self()->gas() >= 100 &&
                           gateways >= 2;
     int mineralReserve = reserveForCore ? 200 : 0;
+    if (pvpCorePending)
+    {
+        mineralReserve = std::max(mineralReserve, 150);
+    }
     if (!(earlyPvP && cores > 0 && dragoons < targetOpeningDragoons))
     {
         mineralReserve = std::max(mineralReserve, defensiveCannonMineralReserve);
+    }
+    if (earlyPvP && cores > 0 && gateways >= 3 && dragoons < 2)
+    {
+        mineralReserve = 0;
     }
     for (auto &u : Broodwar->self()->getUnits())
     {
@@ -1532,6 +1677,44 @@ void DemoAIModule::onFrame()
         if (u->getType() != UnitTypes::Protoss_Gateway) continue;
         if (!u->isCompleted() || !u->isIdle()) continue;
         if (availableArmySupply <= 0) break;
+
+        if (pvpCorePending)
+        {
+            break;
+        }
+
+        if (earlyPvP && cores > 0 && dragoons < 2 && !pvpFirstDragoonTrainDiagPrinted)
+        {
+            Log::Get() << "DIAG dragoonTrainWindow minerals=" << Broodwar->self()->minerals()
+                       << " gas=" << Broodwar->self()->gas()
+                       << " supplyRemaining=" << supplyRemaining
+                       << " availableArmySupply=" << availableArmySupply
+                       << " reserveForFirstDragoons=" << reserveForFirstDragoons
+                       << " zealotFloorNeeded=" << zealotFloorNeeded
+                       << " targetOpeningDragoons=" << targetOpeningDragoons
+                       << " gateways=" << gateways
+                       << " dragoons=" << dragoons;
+            pvpFirstDragoonTrainDiagPrinted = true;
+        }
+
+        if (earlyPvP &&
+            cores == 0 &&
+            countUnits(UnitTypes::Protoss_Assimilator, true) >= 1 &&
+            gateways >= 2 &&
+            zealots >= targetEarlyZealots)
+        {
+            break;
+        }
+
+        if (earlyPvP && cores > 0 && dragoons < 2 && Broodwar->self()->minerals() >= 125 && Broodwar->self()->gas() >= 50)
+        {
+            if (u->train(UnitTypes::Protoss_Dragoon))
+            {
+                availableArmySupply--;
+                dragoons++;
+            }
+            continue;
+        }
 
         if (proxyMode && Broodwar->self()->minerals() >= 100)
         {
@@ -1564,7 +1747,8 @@ void DemoAIModule::onFrame()
         {
             wantGoon = true;
         }
-        if (wantGoon && dragoons < (zealots * 2 + 2))
+        int dragoonCap = (earlyPvP && cores > 0) ? (zealots + 1) : (zealots * 2 + 2);
+        if (wantGoon && dragoons < dragoonCap)
         {
             if (Broodwar->self()->minerals() >= 125 + mineralReserve)
             {
@@ -1600,6 +1784,18 @@ void DemoAIModule::onFrame()
     if (earlyPvP && !enemyGreed && frame < 24 * 60 * 8)
     {
         minAttackThreshold = std::max(minAttackThreshold, 16);
+    }
+    if (earlyPvP && cores > 0 && dragoons >= 1 && frame < 24 * 60 * 8)
+    {
+        minAttackThreshold = std::min(minAttackThreshold, 10);
+    }
+    if (earlyPvP && cores > 0 && dragoons >= 3 && frame < 24 * 60 * 9)
+    {
+        minAttackThreshold = std::min(minAttackThreshold, 12);
+    }
+    if (earlyPvP && cores > 0 && dragoons >= 2 && frame < 24 * 60 * 9)
+    {
+        minAttackThreshold = std::min(minAttackThreshold, 8);
     }
     bool canProactiveAttack = (armyCount >= minAttackThreshold);
     bool recentHomePressure = lastEnemyPressureFrame >= 0 &&
