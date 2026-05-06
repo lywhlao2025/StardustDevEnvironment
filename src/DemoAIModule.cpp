@@ -978,7 +978,8 @@ void DemoAIModule::onFrame()
     int projectedSupply = supplyRemaining + incomingSupply;
 
     bool urgentSupply = supplyRemaining <= 4;
-    bool needSupply = projectedSupply <= 12 || (projectedSupply <= 14 && gateways >= 2) || (projectedSupply <= 18 && gateways >= 3);
+    int gatewaySupplyThreshold = earlyPvP ? 22 : 14;
+    bool needSupply = projectedSupply <= 12 || (projectedSupply <= gatewaySupplyThreshold && gateways >= 2) || (projectedSupply <= 18 && gateways >= 3);
     if ((needSupply || urgentSupply) && pylonInProgress == 0)
     {
         TilePosition near = myStart;
@@ -990,9 +991,20 @@ void DemoAIModule::onFrame()
         tryBuild(UnitTypes::Protoss_Pylon, myStart);
     }
     // PvP gateway floods hit the supply cap quickly; queue pylons before the bank idles production.
-    int pylonBufferThreshold = (earlyPvP && gateways >= 3) ? 28 : 18;
-    int pylonBufferCap = (earlyPvP && gateways >= 3) ? 3 : 2;
-    int pylonBufferMinerals = (earlyPvP && gateways >= 3) ? 150 : 200;
+    int pylonBufferThreshold = 18;
+    int pylonBufferCap = 2;
+    int pylonBufferMinerals = 200;
+    if (earlyPvP && gateways >= 2)
+    {
+        pylonBufferThreshold = 24;
+        pylonBufferMinerals = 125;
+    }
+    if (earlyPvP && gateways >= 3)
+    {
+        pylonBufferThreshold = 28;
+        pylonBufferCap = 3;
+        pylonBufferMinerals = 150;
+    }
     if ((projectedSupply <= pylonBufferThreshold) && pylonInProgress < pylonBufferCap &&
         Broodwar->self()->minerals() >= pylonBufferMinerals)
     {
