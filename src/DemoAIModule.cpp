@@ -979,7 +979,10 @@ void DemoAIModule::onFrame()
 
     bool urgentSupply = supplyRemaining <= 4;
     int gatewaySupplyThreshold = earlyPvP ? 22 : 14;
-    bool needSupply = projectedSupply <= 12 || (projectedSupply <= gatewaySupplyThreshold && gateways >= 2) || (projectedSupply <= 18 && gateways >= 3);
+    bool needSupply = projectedSupply <= 12 ||
+                      (projectedSupply <= gatewaySupplyThreshold && gateways >= 2) ||
+                      (projectedSupply <= 18 && gateways >= 3) ||
+                      (earlyPvP && gateways >= 4 && projectedSupply <= 34);
     if ((needSupply || urgentSupply) && pylonInProgress == 0)
     {
         TilePosition near = myStart;
@@ -1004,6 +1007,12 @@ void DemoAIModule::onFrame()
         pylonBufferThreshold = 28;
         pylonBufferCap = 3;
         pylonBufferMinerals = 150;
+    }
+    if (earlyPvP && gateways >= 4)
+    {
+        pylonBufferThreshold = 40;
+        pylonBufferCap = 4;
+        pylonBufferMinerals = 100;
     }
     if ((projectedSupply <= pylonBufferThreshold) && pylonInProgress < pylonBufferCap &&
         Broodwar->self()->minerals() >= pylonBufferMinerals)
